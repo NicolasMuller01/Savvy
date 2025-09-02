@@ -1,0 +1,220 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Usuario - información del perfil del usuario
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  phone         String?
+  avatar_url    String?
+  currency      String   @default("USD")
+  language      String   @default("es")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  
+  // Auth con Supabase
+  supabase_id   String   @unique
+  
+  // Relaciones
+  budgets       Budget[]
+  expenses      Expense[]
+  investments   Investment[]
+  categories    Category[]
+  settings      UserSettings?
+  
+  @@map("users")
+}
+
+// Configuraciones del usuario
+model UserSettings {
+  id                    String  @id @default(cuid())
+  user_id               String  @unique
+  
+  // Notificaciones
+  bill_reminders        Boolean @default(true)
+  spending_alerts       Boolean @default(true)
+  investment_updates    Boolean @default(false)
+  weekly_reports        Boolean @default(false)
+  push_notifications    Boolean @default(true)
+  email_notifications   Boolean @default(false)
+  
+  // Seguridad
+  biometric_auth        Boolean @default(false)
+  pin_enabled           Boolean @default(false)
+  auto_lock             Boolean @default(true)
+  data_backup           Boolean @default(false)
+  
+  // Preferencias
+  dark_mode             Boolean @default(false)
+  date_format           String  @default("DD/MM/YYYY")
+  start_of_week         String  @default("monday")
+  
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+  
+  // Relación
+  user                  User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@map("user_settings")
+}
+
+// Categorías de gastos/ingresos
+model Category {
+  id          String   @id @default(cuid())
+  user_id     String
+  name        String
+  color       String
+  icon        String?
+  type        CategoryType
+  is_default  Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  
+  // Relaciones
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  expenses    Expense[]
+  budgets     Budget[]
+  
+  @@map("categories")
+}
+
+// Presupuestos
+model Budget {
+  id              String   @id @default(cuid())
+  user_id         String
+  category_id     String?
+  name            String
+  amount          Decimal  @db.Decimal(12, 2)
+  spent_amount    Decimal  @default(0) @db.Decimal(12, 2)
+  period          BudgetPeriod
+  start_date      DateTime
+  end_date        DateTime
+  notifications   Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  // Relaciones
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  category        Category? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  expenses        Expense[]
+  
+  @@map("budgets")
+}
+
+// Gastos e ingresos
+model Expense {
+  id              String   @id @default(cuid())
+  user_id         String
+  category_id     String?
+  budget_id       String?
+  
+  title           String
+  description     String?
+  amount          Decimal  @db.Decimal(12, 2)
+  type            ExpenseType
+  date            DateTime
+  location        String?
+  receipt_url     String?
+  
+  // Metadatos
+  is_recurring    Boolean  @default(false)
+  recurring_period String?
+  tags            String[]
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  // Relaciones
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  category        Category? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  budget          Budget?  @relation(fields: [budget_id], references: [id], onDelete: SetNull)
+  
+  @@map("expenses")
+}
+
+// Inversiones
+model Investment {
+  id              String   @id @default(cuid())
+  user_id         String
+  
+  name            String
+  symbol          String?
+  type            InvestmentType
+  platform        String?  // Nueva columna para la plataforma/exchange
+  category        String?  // Categoría personalizable
+  quantity        Decimal  @db.Decimal(10, 4)
+  purchase_price  Decimal  @db.Decimal(10, 2)
+  current_price   Decimal? @db.Decimal(10, 2)
+  purchase_date   DateTime
+  
+  // Calculados
+  total_invested  Decimal  @db.Decimal(10, 2)
+  current_value   Decimal? @db.Decimal(10, 2)
+  profit_loss     Decimal? @db.Decimal(10, 2)
+  profit_loss_percentage Decimal? @db.Decimal(8, 4)
+  
+  // Metadatos
+  notes           String?
+  is_active       Boolean  @default(true)
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  // Relación
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  price_history   InvestmentPriceHistory[]
+  
+  @@map("investments")
+}
+
+// Historial de precios de inversiones
+model InvestmentPriceHistory {
+  id            String   @id @default(cuid())
+  investment_id String
+  price         Decimal  @db.Decimal(10, 2)
+  date          DateTime @default(now())
+  
+  // Relación
+  investment    Investment @relation(fields: [investment_id], references: [id], onDelete: Cascade)
+  
+  @@map("investment_price_history")
+}
+
+// Enums
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum BudgetPeriod {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum ExpenseType {
+  INCOME
+  EXPENSE
+}
+
+enum InvestmentType {
+  STOCK
+  BOND
+  CRYPTO
+  MUTUAL_FUND
+  ETF
+  REAL_ESTATE
+  OTHER
+}
